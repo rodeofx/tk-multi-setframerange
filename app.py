@@ -1,11 +1,11 @@
 # Copyright (c) 2013 Shotgun Software Inc.
-# 
+#
 # CONFIDENTIAL AND PROPRIETARY
-# 
-# This work is provided "AS IS" and subject to the Shotgun Pipeline Toolkit 
+#
+# This work is provided "AS IS" and subject to the Shotgun Pipeline Toolkit
 # Source Code License included in this distribution package. See LICENSE.
-# By accessing, using, copying or modifying this work you indicate your 
-# agreement to the Shotgun Pipeline Toolkit Source Code License. All rights 
+# By accessing, using, copying or modifying this work you indicate your
+# agreement to the Shotgun Pipeline Toolkit Source Code License. All rights
 # not expressly granted therein are reserved by Shotgun Software Inc.
 
 """
@@ -56,20 +56,20 @@ class SetFrameRange(Application):
             message += "in and out frame data for this Shot."
             QtGui.QMessageBox.information(None, "No data in Shotgun!", message)
             return
-            
+
         # now update the frame range.
         # because the frame range is often set in multiple places (e.g render range,
         # current range, anim range etc), we go ahead an update every time, even if
         # the values in Shotgun are the same as the values reported via get_current_frame_range()
         self.set_frame_range(self.engine.name, new_in, new_out)
-        
+
         message =  "Your scene has been updated with the \n"
         message += "latest frame ranges from shotgun.\n\n"
         message += "Previous start frame: %s\n" % current_in
         message += "New start frame: %s\n\n" % new_in
         message += "Previous end frame: %s\n" % current_out
         message += "New end frame: %s\n\n" % new_out
-        
+
         QtGui.QMessageBox.information(None, "Frame range updated!", message)
 
 
@@ -152,20 +152,26 @@ class SetFrameRange(Application):
 
     def set_frame_range(self, engine, in_frame, out_frame):
 
+        try:
+            in_frame = int(in_frame)
+            out_frame = int(out_frame)
+        except ValueError:
+            raise tank.TankError("Invalid frame range values (%s, %s)!" % (in_frame, out_frame))
+
         if engine == "tk-maya":
             import pymel.core as pm
-            
+
             # set frame ranges for plackback
-            pm.playbackOptions(minTime=in_frame, 
+            pm.playbackOptions(minTime=in_frame,
                                maxTime=out_frame,
                                animationStartTime=in_frame,
                                animationEndTime=out_frame)
-            
+
             # set frame ranges for rendering
             defaultRenderGlobals=pm.PyNode('defaultRenderGlobals')
             defaultRenderGlobals.startFrame.set(in_frame)
             defaultRenderGlobals.endFrame.set(out_frame)
-           
+
         elif engine == "tk-nuke":
             import nuke
 
@@ -190,27 +196,27 @@ class SetFrameRange(Application):
         elif engine == "tk-softimage":
             import win32com
             Application = win32com.client.Dispatch('XSI.Application')
-            
+
             # set playback control
             Application.SetValue("PlayControl.In", in_frame)
             Application.SetValue("PlayControl.Out", out_frame)
             Application.SetValue("PlayControl.GlobalIn", in_frame)
-            Application.SetValue("PlayControl.GlobalOut", out_frame)       
-            
+            Application.SetValue("PlayControl.GlobalOut", out_frame)
+
             # set frame ranges for rendering
             Application.SetValue("Passes.RenderOptions.FrameStart", in_frame)
             Application.SetValue("Passes.RenderOptions.FrameEnd", out_frame)
-            
+
 
         elif engine == "tk-houdini":
             import hou
             # We have to use hscript until SideFX gets around to implementing hou.setGlobalFrameRange()
-            hou.hscript("tset `((%s-1)/$FPS)` `(%s/$FPS)`" % (in_frame, out_frame))            
+            hou.hscript("tset `((%s-1)/$FPS)` `(%s/$FPS)`" % (in_frame, out_frame))
             hou.playbar.setPlaybackRange(in_frame, out_frame)
 
         elif engine == "tk-3dsmax":
             from Py3dsMax import mxs
             mxs.animationRange = mxs.interval(in_frame, out_frame)
-        
+
         else:
             raise tank.TankError("Don't know how to set current frame range for engine %s!" % engine)
