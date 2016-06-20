@@ -151,6 +151,11 @@ class SetFrameRange(Application):
             current_in = MaxPlus.Animation.GetAnimRange().Start() / ticks
             current_out = MaxPlus.Animation.GetAnimRange().End() / ticks
 
+        elif engine == "tk-katana":
+            from Katana import NodegraphAPI
+            current_in = int(NodegraphAPI.GetInTime())
+            current_out = int(NodegraphAPI.GetOutTime())
+
         else:
             raise tank.TankError("Don't know how to get current frame range for engine %s!" % engine)
 
@@ -228,6 +233,21 @@ class SetFrameRange(Application):
             ticks = MaxPlus.Core.EvalMAXScript("ticksperframe").GetInt()
             range = MaxPlus.Interval(in_frame * ticks, out_frame * ticks)
             MaxPlus.Animation.SetRange(range)
+
+        elif engine == "tk-katana":
+            from Katana import NodegraphAPI
+
+            NodegraphAPI.SetInTime(in_frame)
+            NodegraphAPI.SetOutTime(out_frame)
+
+            NodegraphAPI.SetWorkingInTime(in_frame)
+            NodegraphAPI.SetWorkingOutTime(out_frame)
+
+            current_frame = NodegraphAPI.GetCurrentTime()
+            if current_frame < in_frame:
+                NodegraphAPI.SetCurrentTime(in_frame)
+            elif current_frame > out_frame:
+                NodegraphAPI.SetCurrentTime(out_frame)
 
         else:
             raise tank.TankError("Don't know how to set current frame range for engine %s!" % engine)
