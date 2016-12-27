@@ -16,6 +16,7 @@ An app that syncs the frame range between a scene and a shot in Shotgun.
 import sys
 import os
 
+
 from tank.platform import Application
 from tank.platform.qt import QtCore, QtGui
 import tank
@@ -34,7 +35,8 @@ class SetFrameRange(Application):
                                  "a current Shot, current Asset etc). This app requires "
                                  "an entity as part of the context in order to work.")
 
-        self.engine.register_command("Sync Frame Range with Shotgun", self.run_app)
+        self.engine.register_command("Sync Frame Range with Shotgun",
+                                     lambda: self.run_app(from_menu=True))
 
     def destroy_app(self):
         """
@@ -42,8 +44,7 @@ class SetFrameRange(Application):
         """
         self.log_debug("Destroying sg_set_frame_range")
 
-
-    def run_app(self):
+    def run_app(self, from_menu=False):
         """
         Callback from when the menu is clicked.
         """
@@ -57,27 +58,34 @@ class SetFrameRange(Application):
             QtGui.QMessageBox.information(None, "No data in Shotgun!", message)
             return
 
+        # shotgun data comes as str, so str everything just to check for :
+        if (str(new_in), str(new_out)) == (str(current_in), str(current_out)):
+            # what an optimization :)
+            if from_menu:
+                msg = ('New frame range same than current ({0}-{1})\n'
+                       'No change required.').format(current_in, current_out)
+                QtGui.QMessageBox.information(None, "Frame range update", msg)
+            return
+
         # now update the frame range.
         # because the frame range is often set in multiple places (e.g render range,
         # current range, anim range etc), we go ahead an update every time, even if
         # the values in Shotgun are the same as the values reported via get_current_frame_range()
-        self.set_frame_range(self.engine.name, new_in, new_out)
+        self.set_frame_range(self.engine.name, new_in, new_out, current_in, current_out)
 
-        message =  "Your scene has been updated with the \n"
-        message += "latest frame ranges from shotgun.\n\n"
-        message += "Previous start frame: %s\n" % current_in
-        message += "New start frame: %s\n\n" % new_in
-        message += "Previous end frame: %s\n" % current_out
-        message += "New end frame: %s\n\n" % new_out
-
-        QtGui.QMessageBox.information(None, "Frame range updated!", message)
-
-
-
+        if self.engine.name != 'tk-nuke':  # nuke has its own dialogs
+            message = (
+                "Your scene has been updated with the \n"
+                "latest frame ranges from shotgun.\n\n"
+                "Previous start frame: {prev_start}\n"
+                "New start frame: {new_start}\n\n"
+                "Previous end frame: {prev_end}\n"
+                "New end frame: {new_end}\n\n").format(prev_start=current_in, prev_end=current_out,
+                                                       new_start=new_in, new_end=new_out)
+            QtGui.QMessageBox.information(None, "Frame range updated!", message)
 
     ###############################################################################################
     # implementation
-
 
     def get_frame_range_from_shotgun(self):
         """
@@ -106,8 +114,7 @@ class SetFrameRange(Application):
                                  "%s. This entity type does not have a "
                                  "field %s.%s!" % (sg_entity_type, sg_entity_type, sg_out_field))
 
-        return ( data[sg_in_field], data[sg_out_field] )
-
+        return data[sg_in_field], data[sg_out_field]
 
     def get_current_frame_range(self, engine):
 
@@ -161,7 +168,7 @@ class SetFrameRange(Application):
 
         return (current_in, current_out)
 
-    def set_frame_range(self, engine, in_frame, out_frame):
+    def set_frame_range(self, engine, in_frame, out_frame, prev_in, prev_out):
 
         try:
             in_frame = int(in_frame)
@@ -185,17 +192,21 @@ class SetFrameRange(Application):
 
         elif engine == "tk-nuke":
             import nuke
-
-            # unlock
-            locked = nuke.root()["lock_range"].value()
-            if locked:
-                nuke.root()["lock_range"].setValue(False)
+            root = nuke.root()
+            box = QtGui.QMessageBox()
+            box.setWindowTitle("Sync Frame Range..")
+            box.setText(('Update scene frame range     \n\n'
+                         'from: %s-%s\n\n'
+                         'to:   %s-%s\n\n'
+                         '?') % (prev_in, prev_out, in_frame, out_frame))
+            box.addButton('Update', QtGui.QMessageBox.ActionRole)
+            box.addButton('Cancel', QtGui.QMessageBox.ActionRole)
+            if box.exec_() == 1:
+                return
             # set values
-            nuke.root()["first_frame"].setValue(in_frame)
-            nuke.root()["last_frame"].setValue(out_frame)
-            # and lock again
-            if locked:
-                nuke.root()["lock_range"].setValue(True)
+            root['first_frame'].setValue(in_frame)
+            root['last_frame'].setValue(out_frame)
+            root['lock_range'].setValue(True)
 
         elif engine == "tk-motionbuilder":
             from pyfbsdk import FBPlayerControl, FBTime
